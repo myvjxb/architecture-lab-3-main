@@ -1,5 +1,3 @@
-import { markOrderPaid } from "../../orders/internal/orderMutations.ts";
-
 export type StripePayload = {
   id: string;
   amount: number;
@@ -21,8 +19,9 @@ export class StripeClient {
       state = "requires_action";
     }
 
-    const response: StripeResponse = { charge_id: `ch_${payload.id}`, state };
-    markOrderPaid(payload.metadata.orderId, state === "succeeded" ? "paid" : "failed");
-    return response;
+    return {
+      charge_id: `ch_${payload.id}`,
+      state,
+    };
   }
 }

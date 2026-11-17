@@ -25,3 +25,17 @@
 - `src/database.ts` (структура сховища `stock` та `orders` залишається незмінною)
 - `src/config.ts` (конфігураційні константи за замовчуванням залишаються на місці, змінюється лише спосіб їх передачі)
 - Публічний формат відповіді `CheckoutController.checkout` (`{ orderId, status, total, paymentStatus }`) для сценаріїв `paid` та `failed`.
+
+**Actual files changed:**
+- `src/payments/normalizePaymentStatus.ts` (створено єдиний нормалізатор статусів провайдера)
+- `src/payments/PaymentService.ts` (створено публічний provider-neutral контракт `Payments`)
+- `src/payments/internal/StripeClient.ts` (видалено зворотний імпорт `orders/internal`, додано підтримку `requires_action`)
+- `src/orders/OrderService.ts` (переведено на `PaymentService` та `InventoryService`, видалено прямий доступ до `database.stock`)
+- `src/orders/internal/orderMutations.ts` (видалено через усунення порушення меж між `Payments` та `Orders`)
+- `src/orders/mapPaymentStatus.ts`, `src/reports/mapPaymentStatus.ts`, `src/notifications/mapPaymentStatus.ts` (делеговано мапінг у `Payments`)
+- `src/inventory/InventoryService.ts` та `src/inventory/StockRepository.ts` (реалізовано атомарний `reserve` і захист інваріанта `available >= 0`)
+- `src/shared/calculateTotal.ts` та `src/checkout/CheckoutController.ts` (зроблено `calculateTotal` чистою функцією, прибрано `StripePayload` з контролера)
+- `tests/payment-status.unit.test.ts` та `tests/level75.boundaries.test.ts` (додано тести рівнів 60 та 75)
+
+**Difference from prediction and explanation:**
+Початковий прогноз повністю підтвердився: ядро бізнес-сховища (`src/database.ts`), конфігурація (`src/config.ts`) та зовнішній формат відповіді `CheckoutController.checkout` не змінилися. Додатково було видалено файл `src/orders/internal/orderMutations.ts`, оскільки після розриву циклічної залежності `Orders ↔ Payments` у ньому відпала потреба.

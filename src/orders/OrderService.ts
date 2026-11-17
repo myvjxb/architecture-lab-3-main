@@ -1,36 +1,53 @@
 import { database } from "../database.ts";
 import type { CartLine } from "../shared/calculateTotal.ts";
-// Deliberate boundary violation: Orders depends on a Payments implementation detail.
-import { StripeClient, type StripePayload } from "../payments/internal/StripeClient.ts";
-import { mapPaymentStatus } from "./mapPaymentStatus.ts";
+import { InventoryService } from "../inventory/InventoryService.ts";
+import { PaymentService } from "../payments/PaymentService.ts";
+
+export type PlaceOrderInput = {
+  orderId: string;
+  lines: readonly CartLine[];
+  total: number;
+  currency: string;
+  paymentToken: string;
+};
 
 export class OrderService {
-  private readonly stripe: StripeClient;
+  private readonly inventory: InventoryService;
+  private readonly payments: PaymentService;
 
-  constructor(stripe = new StripeClient()) {
-    this.stripe = stripe;
+  constructor(
+    inventory = new InventoryService(),
+    payments = new PaymentService(),
+  ) {
+    this.inventory = inventory;
+    this.payments = payments;
   }
 
-  async placeOrder(orderId: string, lines: CartLine[], total: number, payload: StripePayload) {
-    for (const line of lines) {
-      const row = database.stock.get(line.productId);
-      if (!row || row.available < line.quantity) {
-        throw new Error(`Insufficient stock for ${line.productId}`);
-      }
-
-      // Deliberate ownership violation: Orders writes Inventory storage directly.
-      database.stock.set(line.productId, {
+  async placeOrder(input: PlaceOrderInput) {
+    this.inventory.reserve(
+      input.lines.map((line) => ({
         productId: line.productId,
-        available: row.available - line.quantity,
-      });
-    }
+        quantity: line.quantity,
+      })),
+    );
 
-    database.orders.set(orderId, { id: orderId, status: "created", total });
-    const providerResponse = await this.stripe.createCharge(payload);
-    const paymentStatus = mapPaymentStatus(providerResponse);
-    const order = database.orders.get(orderId)!;
-    order.paymentStatus = paymentStatus;
-    order.status = paymentStatus === "paid" ? "confirmed" : "payment_pending";
+    database.orders.set(input.orderId, {
+      id: input.orderId,
+      status: "created",
+      total: input.total,
+    });
+
+    const paymentResult = await this.payments.authorize({
+      orderId: input.orderId,
+      paymentToken: input.paymentToken,
+      amount: input.total,
+      currency: input.currency,
+    });
+
+    const order = database.orders.get(input.orderId)!;
+    order.paymentStatus = paymentResult.status;
+    order.status = paymentResult.status === "paid" ? "confirmed" : "payment_pending";
+
     return { ...order };
   }
 }

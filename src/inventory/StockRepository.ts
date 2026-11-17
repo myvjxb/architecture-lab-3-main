@@ -1,12 +1,14 @@
-import { database } from "../database.ts";
+import { database, type StockRow } from "../database.ts";
 
 export class StockRepository {
-  find(productId: string) {
+  find(productId: string): StockRow | undefined {
     return database.stock.get(productId);
   }
 
-  // This low-level write API lets any module bypass Inventory invariants.
-  updateAvailable(productId: string, available: number): void {
-    database.stock.set(productId, { productId, available });
+  save(row: StockRow): void {
+    if (row.available < 0) {
+      throw new Error(`Stock invariant violated for ${row.productId}: available cannot be negative`);
+    }
+    database.stock.set(row.productId, { ...row });
   }
 }
